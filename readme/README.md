@@ -1,6 +1,12 @@
-# Technical Documentation
+# Technical Documentation (legacy folder)
 
-This folder contains complete technical documentation for the CollabBoard project.
+**Canonical documentation has moved to [`/docs`](../docs/README.md).** Prefer the `docs/` tree for handover; it is kept in sync with the current Socket.IO protocol and file paths.
+
+This folder may still contain useful narrative notes; if anything conflicts with `docs/`, treat **`docs/` as the source of truth**.
+
+---
+
+This folder previously contained complete technical documentation for the CollabBoard project.
 
 ## Documents
 

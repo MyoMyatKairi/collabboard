@@ -1,7 +1,34 @@
 {
-  "name": "collaborative-drawing-app",
+  "name": "collabboard",
   "private": true,
   "version": "1.0.0",
+  "description": "Real-time collaborative whiteboard with React, Supabase, Konva, and Socket.IO",
+  "author": "Myo Myint Myat",
+  "license": "MIT",
+  "keywords": [
+    "whiteboard",
+    "collaboration",
+    "realtime",
+    "react",
+    "vite",
+    "typescript",
+    "supabase",
+    "socket.io",
+    "konva",
+    "canvas",
+    "drawing"
+  ],
+  "homepage": "https://github.com/MyoMyatKairi/collabboard#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MyoMyatKairi/collabboard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MyoMyatKairi/collabboard/issues"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -9,7 +36,9 @@
     "preview": "vite preview",
     "start": "node server.ts",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -42,6 +71,7 @@
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "vitest": "^3.2.4"
   }
 }

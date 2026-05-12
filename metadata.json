@@ -1,5 +1,5 @@
 {
   "name": "CollabBoard",
-  "description": "A real-time collaborative whiteboard for teams and creative sessions.",
+  "description": "Real-time collaborative whiteboard: shared canvas, Supabase auth and persistence, Socket.IO sync. See docs/ for technical handover.",
   "requestFramePermissions": []
 }

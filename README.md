@@ -1,76 +1,103 @@
-# CollabBoard - Online Collaborative Whiteboard
+# CollabBoard — Collaborative whiteboard
 
-A modern, real-time collaborative whiteboard application built with React, Supabase, and Konva.
+A real-time collaborative whiteboard: shared cursors, drawing tools, room codes, and Supabase-backed auth and persistence. Technical handover lives in **[`docs/`](docs/README.md)**; manual QA cases are in **[`testing/`](testing/README.md)**.
 
-## 🚀 Features
+## Features
 
-- **Real-time Collaboration**: See other users' cursors and drawings instantly.
-- **Rich Drawing Tools**:
-  - Freehand drawing (Pen)
-  - Shapes: Rectangles, Circles, Arrows, and Lines
-  - Text elements
-  - Sticky Notes with double-click editing
-- **User Authentication**: Secure Sign Up and Sign In powered by Supabase Auth.
-- **Responsive Design**: Optimized for both Desktop (floating vertical toolbar) and Mobile (bottom horizontal toolbar).
-- **Export Options**: Save your work as high-quality PNG images or PDF documents.
-- **Room System**: Create private rooms or join existing ones via unique Room IDs.
-- **Participant Tracking**: See who else is online in your current room.
+- **Realtime collaboration** — Socket.IO syncs strokes, edits, clears, and cursors while users are online (room cap: 5 concurrent sockets).
+- **Drawing tools** — Pen, rectangle, circle, arrow, line, text, sticky notes, eraser; colors and stroke widths; selection and transform.
+- **Supabase auth** — Email sign-up and sign-in.
+- **Rooms** — Boards with short `room_code`; create from home or join by code; recent rooms with presence hints.
+- **Moderation** — Owner can approve pending guests, kick, and ban (aligned with server and DB role).
+- **Persistence** — Board metadata and elements stored in Postgres (`board_elements`, `boards`, `participants`, `board_presence`).
+- **Export** — PNG and PDF export from the canvas.
+- **Responsive UI** — Desktop and mobile toolbar layouts.
 
-## 🛠️ Tech Stack
+## Tech stack
 
-- **Frontend**: React 19, Vite, TypeScript
-- **Styling**: Tailwind CSS 4
-- **Canvas Engine**: Konva / React-Konva
-- **Backend/Database**: Supabase (Auth, PostgreSQL, RLS)
-- **Real-time**: Socket.io
-- **Animations**: Framer Motion
-- **Icons**: Lucide React
+React 19, Vite 6, TypeScript, Tailwind CSS 4, Konva, Express + Socket.IO, Supabase.
 
-## 📋 Prerequisites
+## Prerequisites
 
-Before running the project, you need:
-- A [Supabase](https://supabase.com/) account and project.
-- Node.js installed on your machine.
+- Node.js **20+** (see `package.json` `engines`).
+- A [Supabase](https://supabase.com/) project.
 
-## ⚙️ Setup Instructions
+## Quick start
 
-### 1. Environment Variables
-Create a `.env` file in the root directory and add your Supabase credentials:
+### 1. Environment
+
+Copy [`.env.example`](.env.example) to `.env` and set:
 
 ```env
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_anon_key
 ```
 
-### 2. Database Schema
-Run the contents of `supabase-schema.sql` (found in this repository) in your Supabase SQL Editor. This will set up:
-- `profiles`, `boards`, `participants`, and `board_elements` tables.
-- Row Level Security (RLS) policies.
-- Triggers for automatic profile creation and board owner assignment.
+Optional variables are documented in [`.env.example`](.env.example) and [`docs/04-environment-variables.md`](docs/04-environment-variables.md).
 
-### 3. Supabase Configuration
-In your Supabase Dashboard:
-- Go to **Authentication > Providers > Email**.
-- Disable **Confirm email** if you want users to be able to sign in immediately after signing up.
+### 2. Database
 
-### 4. Installation
+In the Supabase SQL editor, run:
+
+- [`supabase/schema.sql`](supabase/schema.sql)
+
+Optional:
+
+- [`supabase/seed.sql`](supabase/seed.sql)
+
+### 3. Supabase auth
+
+Under **Authentication → Providers → Email**, you may disable **Confirm email** for faster local testing.
+
+### 4. Install and run
+
 ```bash
 npm install
-```
-
-### 5. Running the App
-```bash
 npm run dev
 ```
 
-## 📂 Project Structure
+Open **http://localhost:3000**. The dev server (`server.ts`) runs Express with Vite in middleware mode and Socket.IO on the same port.
 
-- `src/components/`: UI components (Auth, Landing, Whiteboard).
-- `src/lib/`: Utility functions and Supabase client initialization.
-- `src/types.ts`: TypeScript interfaces and enums.
-- `supabase-schema.sql`: Database migration script.
-- `supabase-seed.sql`: Sample data for testing.
+### Production-style run
 
-## 📄 License
+```bash
+npm run build
+NODE_ENV=production npm run start
+```
 
-MIT
+Express serves the built SPA from `dist/` and keeps Socket.IO on port 3000.
+
+## Documentation
+
+| Resource | Description |
+|----------|-------------|
+| [`docs/README.md`](docs/README.md) | Handover index (architecture, env, DB, realtime protocol, deployment) |
+| [`testing/README.md`](testing/README.md) | Manual test matrix and case files |
+
+## Project layout
+
+| Path | Role |
+|------|------|
+| `server.ts` | HTTP + Vite (dev) or static `dist` (prod) + Socket.IO |
+| `src/App.tsx` | Router and auth gate |
+| `src/components/` | Auth, Landing, Whiteboard |
+| `src/lib/supabase.ts` | Supabase client |
+| `src/types.ts` | Shared TypeScript types |
+| `supabase/` | SQL schema and seed |
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Development (tsx + Vite middleware + Socket.IO) |
+| `npm run build` | Production frontend build |
+| `npm run start` | Node server (set `NODE_ENV=production` for static assets) |
+| `npm run preview` | Vite preview only (not the main app server) |
+| `npm run clean` | Remove `dist/` |
+| `npm run lint` | `tsc --noEmit` |
+| `npm test` | Vitest: manual case docs + Socket.IO integration tests (`tests/socket.integration.test.ts`) |
+| `npm run test:watch` | Vitest in watch mode |
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).

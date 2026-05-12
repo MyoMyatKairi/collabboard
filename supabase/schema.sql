@@ -353,3 +353,27 @@ DROP POLICY IF EXISTS "Users can delete own board presence" ON board_presence;
 CREATE POLICY "Users can delete own board presence" ON board_presence FOR DELETE USING (
   user_id = auth.uid()
 );
+
+-- ############################################################
+-- ROOM ACCESS: banned role + policies (migration)
+-- ############################################################
+
+ALTER TABLE participants DROP CONSTRAINT IF EXISTS participants_role_check;
+ALTER TABLE participants ADD CONSTRAINT participants_role_check
+  CHECK (role IN ('owner', 'editor', 'viewer', 'banned'));
+
+-- Users can always read their own participant row (e.g. detect banned status)
+DROP POLICY IF EXISTS "Users can view own participant row" ON participants;
+CREATE POLICY "Users can view own participant row" ON participants FOR SELECT USING (
+  user_id = auth.uid()
+);
+
+DROP POLICY IF EXISTS "Users can join public boards" ON participants;
+CREATE POLICY "Users can join public boards" ON participants FOR INSERT WITH CHECK (
+  user_id = auth.uid()
+  AND EXISTS (
+    SELECT 1 FROM boards
+    WHERE boards.id = participants.board_id
+    AND boards.is_private = false
+  )
+);

@@ -1,9 +1,18 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Stage, Layer, Line, Rect, Circle, Arrow, Text, Group, Transformer, Path } from "react-konva";
 import { nanoid } from "nanoid";
 import * as lucideReact from "lucide-react";
-import { Element, ElementType, Participant, CursorPosition } from "../types";
+import {
+  Element,
+  ElementType,
+  Participant,
+  CursorPosition,
+  PendingRequest,
+  DrawingUser,
+  RoomRosterEntry,
+  ParticipantRole,
+} from "../types";
 import { jsPDF } from "jspdf";
 import { motion } from "motion/react";
 import { io, Socket } from "socket.io-client";
@@ -63,7 +72,9 @@ export default function Whiteboard({ session }: WhiteboardProps) {
   const userName = profile?.full_name || profile?.username || session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || "Guest";
   
   const [elements, setElements] = useState<Element[]>([]);
-  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [roomRoster, setRoomRoster] = useState<RoomRosterEntry[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
+  const [drawingUsers, setDrawingUsers] = useState<DrawingUser[]>([]);
   const [cursors, setCursors] = useState<Record<string, CursorPosition>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tool, setTool] = useState<ElementType>("pen");
@@ -76,6 +87,17 @@ export default function Whiteboard({ session }: WhiteboardProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
   const [boardId, setBoardId] = useState<string | null>(null);
+  const [boardOwnerId, setBoardOwnerId] = useState<string | null>(null);
+  const [participantDbRole, setParticipantDbRole] = useState<ParticipantRole | null>(null);
+  const [admitted, setAdmitted] = useState(false);
+  const [waitScreen, setWaitScreen] = useState<
+    | null
+    | "connecting"
+    | "pending-approval"
+    | { denied: "owner-offline" | "room-full" | "rejected" | "banned" }
+    | "owner-left"
+  >(null);
+  const [showParticipantsPanel, setShowParticipantsPanel] = useState(false);
   const [boardOnlineCount, setBoardOnlineCount] = useState(0);
   const [loadingBoard, setLoadingBoard] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -83,6 +105,7 @@ export default function Whiteboard({ session }: WhiteboardProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   
   const socketRef = useRef<Socket | null>(null);
+  const needsEditorUpsertRef = useRef(false);
   const stageRef = useRef<any>(null);
   const transformerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -126,41 +149,120 @@ export default function Whiteboard({ session }: WhiteboardProps) {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Initialize Socket.io
+  // Initialize Socket.io (after board metadata is loaded)
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || loadingBoard || !boardOwnerId || !session?.user?.id) return;
+
+    needsEditorUpsertRef.current = false;
 
     const socket = io();
     socketRef.current = socket;
 
+    const isOwner = session.user.id === boardOwnerId;
+    const isApprovedMember =
+      participantDbRole === "owner" ||
+      participantDbRole === "editor" ||
+      participantDbRole === "viewer";
+
+    const emitRequestJoin = () => {
+      const participantRole =
+        participantDbRole === "owner"
+          ? "owner"
+          : participantDbRole === "viewer"
+            ? "viewer"
+            : participantDbRole === "editor"
+              ? "editor"
+              : undefined;
+
+      if (!isOwner && !isApprovedMember) {
+        needsEditorUpsertRef.current = true;
+      }
+
+      socket.emit("request-join", {
+        roomId,
+        userId: session.user.id,
+        userName,
+        ownerUserId: boardOwnerId,
+        isOwner,
+        isApprovedMember,
+        isBanned: participantDbRole === "banned",
+        participantRole,
+      });
+    };
+
     socket.on("connect", () => {
       console.log("Connected to socket server");
       setIsSocketConnected(true);
-      socket.emit("join-room", {
-        roomId,
-        userId: session?.user?.id,
-        userName:
-          session?.user?.user_metadata?.full_name ||
-          session?.user?.email?.split("@")[0] ||
-          userName,
-      });
+      emitRequestJoin();
     });
 
     socket.on("disconnect", () => {
       setIsSocketConnected(false);
-      setParticipants([]);
+      setRoomRoster([]);
+      setPendingRequests([]);
+      setDrawingUsers([]);
     });
 
-    socket.on("participants", (list: Array<{ id: string; name: string }>) => {
-      const deduped = new Map<string, Participant>();
-      const mySocketId = socket.id;
-      (list || []).forEach((p) => {
-        if (!p?.id) return;
-        // Exclude myself whether server emits user id or socket id.
-        if (p.id === session?.user?.id || p.id === mySocketId) return;
-        deduped.set(p.id, { id: p.id, name: p.name || "Guest" });
-      });
-      setParticipants(Array.from(deduped.values()));
+    socket.on("joined", async () => {
+      setAdmitted(true);
+      setWaitScreen(null);
+      if (needsEditorUpsertRef.current && supabase && boardId && session?.user?.id) {
+        needsEditorUpsertRef.current = false;
+        const { error } = await supabase.from("participants").upsert(
+          {
+            user_id: session.user.id,
+            board_id: boardId,
+            role: "editor",
+          },
+          { onConflict: "user_id,board_id" }
+        );
+        if (error) console.error("participant upsert after approval:", error);
+        setParticipantDbRole("editor");
+      }
+    });
+
+    socket.on("join-pending", () => {
+      setWaitScreen("pending-approval");
+    });
+
+    socket.on("join-denied", ({ reason }: { reason: string }) => {
+      needsEditorUpsertRef.current = false;
+      setAdmitted(false);
+      if (
+        reason === "owner-offline" ||
+        reason === "room-full" ||
+        reason === "rejected" ||
+        reason === "banned"
+      ) {
+        setWaitScreen({ denied: reason });
+      }
+    });
+
+    socket.on("owner-left", () => {
+      needsEditorUpsertRef.current = false;
+      setWaitScreen("owner-left");
+    });
+
+    socket.on("pending-requests", (list: PendingRequest[]) => {
+      setPendingRequests(list || []);
+    });
+
+    socket.on("room-roster", (roster: RoomRosterEntry[]) => {
+      setRoomRoster(roster || []);
+    });
+
+    socket.on("drawing-state", (users: DrawingUser[]) => {
+      setDrawingUsers(users || []);
+    });
+
+    socket.on("kicked", () => {
+      toast.error("You were removed from the room");
+      navigate("/");
+    });
+
+    socket.on("banned", () => {
+      toast.error("You were banned from this room");
+      navigate("/");
     });
 
     socket.on("draw", (element: Element) => {
@@ -191,8 +293,18 @@ export default function Whiteboard({ session }: WhiteboardProps) {
 
     return () => {
       socket.disconnect();
+      socketRef.current = null;
     };
-  }, [roomId, session?.user?.id, session?.user?.email, session?.user?.user_metadata?.full_name, userName]);
+  }, [
+    roomId,
+    loadingBoard,
+    boardOwnerId,
+    boardId,
+    session?.user?.id,
+    participantDbRole,
+    userName,
+    navigate,
+  ]);
 
   // Resolve board and hydrate saved elements
   useEffect(() => {
@@ -216,19 +328,18 @@ export default function Whiteboard({ session }: WhiteboardProps) {
         return;
       }
 
-      const { error: participantError } = await supabase
+      const { data: participantRow } = await supabase
         .from("participants")
-        .upsert(
-          {
-            user_id: session?.user?.id,
-            board_id: board.id,
-            role: board.owner_id === session?.user?.id ? "owner" : "editor",
-          },
-          { onConflict: "user_id,board_id", ignoreDuplicates: true }
-        );
+        .select("role")
+        .eq("board_id", board.id)
+        .eq("user_id", session?.user?.id ?? "")
+        .maybeSingle();
 
-      if (participantError) {
-        toast.error(`Unable to join room: ${participantError.message}`);
+      const role = (participantRow?.role as ParticipantRole | undefined) ?? null;
+      setParticipantDbRole(role);
+
+      if (role === "banned") {
+        toast.error("You have been banned from this room");
         navigate("/");
         setLoadingBoard(false);
         return;
@@ -237,6 +348,8 @@ export default function Whiteboard({ session }: WhiteboardProps) {
       setBoardOnlineCount(board.active_users_count ?? 0);
 
       setBoardId(board.id);
+      setBoardOwnerId(board.owner_id);
+
       const { data: rows, error: elementError } = await supabase
         .from("board_elements")
         .select("id, board_id, type, data, position_x, position_y, width, height, z_index")
@@ -252,6 +365,7 @@ export default function Whiteboard({ session }: WhiteboardProps) {
           .filter(Boolean) as Element[];
         setElements(hydrated);
       }
+      setWaitScreen("connecting");
       setLoadingBoard(false);
     }
 
@@ -260,7 +374,7 @@ export default function Whiteboard({ session }: WhiteboardProps) {
 
   // Board presence heartbeat (single row per user per board)
   useEffect(() => {
-    if (!supabase || !boardId || !session?.user?.id) return;
+    if (!supabase || !boardId || !session?.user?.id || !admitted) return;
 
     const upsertPresence = async () => {
       const { error } = await supabase
@@ -312,10 +426,10 @@ export default function Whiteboard({ session }: WhiteboardProps) {
         .eq("board_id", boardId)
         .eq("user_id", session.user.id);
     };
-  }, [boardId, session?.user?.id]);
+  }, [boardId, session?.user?.id, admitted]);
 
   const persistBoard = async (mode: "auto" | "manual" | "leave" = "auto") => {
-    if (!supabase || !boardId) return;
+    if (!supabase || !boardId || !admitted) return;
     if (!dirtyRef.current || flushingRef.current) return;
     flushingRef.current = true;
     if (mode !== "auto") setIsSaving(true);
@@ -361,16 +475,16 @@ export default function Whiteboard({ session }: WhiteboardProps) {
 
   // Autosave every 5 minutes
   useEffect(() => {
-    if (!supabase || !boardId) return;
+    if (!supabase || !boardId || !admitted) return;
     const timer = window.setInterval(() => {
       void persistBoard("auto");
     }, 300000);
     return () => window.clearInterval(timer);
-  }, [boardId, session?.user?.id]);
+  }, [boardId, session?.user?.id, admitted]);
 
   // Save when leaving/unloading
   useEffect(() => {
-    if (!boardId) return;
+    if (!boardId || !admitted) return;
     const handleBeforeUnload = () => {
       if (supabase && session?.user?.id) {
         void supabase
@@ -389,7 +503,7 @@ export default function Whiteboard({ session }: WhiteboardProps) {
   }, [boardId, session?.user?.id, supabase]);
 
   const handleLeaveRoom = async () => {
-    if (supabase && session?.user?.id && boardId) {
+    if (admitted && supabase && session?.user?.id && boardId) {
       await supabase
         .from("board_presence")
         .delete()
@@ -432,6 +546,9 @@ export default function Whiteboard({ session }: WhiteboardProps) {
     }
 
     setIsDrawing(true);
+    if (admitted && roomId) {
+      socketRef.current?.emit("drawing-start", { roomId });
+    }
     const pos = e.target.getStage().getPointerPosition();
     const id = nanoid();
 
@@ -558,6 +675,7 @@ export default function Whiteboard({ session }: WhiteboardProps) {
   const handleMouseUp = () => {
     if (!isDrawing) return;
     setIsDrawing(false);
+    socketRef.current?.emit("drawing-end", { roomId });
 
     const lastElement = elements[elements.length - 1];
     if (lastElement) {
@@ -728,35 +846,165 @@ export default function Whiteboard({ session }: WhiteboardProps) {
     });
   };
 
-  const socketBasedCount = participants.length + (isSocketConnected ? 1 : 0);
-  const cursorBasedCount = isSocketConnected ? Object.keys(cursors).length + 1 : 0;
-  const onlineCount = isSocketConnected
-    ? Math.max(socketBasedCount, cursorBasedCount, 1)
-    : boardOnlineCount;
+  const otherParticipants = useMemo((): Participant[] => {
+    const uid = session?.user?.id;
+    return roomRoster
+      .filter((r) => r.userId !== uid)
+      .map((r) => ({
+        id: r.userId,
+        name: r.name,
+        userId: r.userId,
+        role: r.role,
+        color: undefined,
+      }));
+  }, [roomRoster, session?.user?.id]);
 
-  return (
-    loadingBoard ? (
+  const onlineCount = useMemo(() => {
+    if (admitted && isSocketConnected) {
+      return Math.max(roomRoster.length, 1);
+    }
+    return boardOnlineCount;
+  }, [admitted, isSocketConnected, roomRoster.length, boardOnlineCount]);
+
+  const drawingPillText = useMemo(() => {
+    if (drawingUsers.length === 0) return null;
+    if (drawingUsers.length === 1) return `${drawingUsers[0].name} is drawing…`;
+    return `${drawingUsers[0].name} +${drawingUsers.length - 1} others drawing…`;
+  }, [drawingUsers]);
+
+  const handleWaitBack = () => {
+    socketRef.current?.disconnect();
+    navigate("/");
+  };
+
+  const handleDecideJoin = (targetSocketId: string, decision: "approve" | "reject") => {
+    if (!roomId) return;
+    socketRef.current?.emit("decide-join", { roomId, targetSocketId, decision });
+  };
+
+  const handleKick = (targetSocketId: string) => {
+    if (!roomId) return;
+    socketRef.current?.emit("kick", { roomId, targetSocketId });
+  };
+
+  const handleBanUser = async (targetUserId: string, targetSocketId: string) => {
+    if (!roomId) return;
+    socketRef.current?.emit("ban", { roomId, targetSocketId });
+    if (supabase && boardId) {
+      const { error } = await supabase.from("participants").upsert(
+        { user_id: targetUserId, board_id: boardId, role: "banned" },
+        { onConflict: "user_id,board_id" }
+      );
+      if (error) console.error("ban upsert:", error);
+    }
+  };
+
+  const isRoomOwnerResolved = Boolean(session?.user?.id && boardOwnerId && session.user.id === boardOwnerId);
+
+  if (loadingBoard) {
+    return (
       <div className="h-screen w-screen flex items-center justify-center bg-slate-50">
         <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
-    ) : (
+    );
+  }
+
+  if (!admitted) {
+    const title =
+      waitScreen === "connecting"
+        ? "Connecting…"
+        : waitScreen === "pending-approval"
+          ? "Waiting for approval"
+          : waitScreen === "owner-left"
+            ? "Host left"
+            : typeof waitScreen === "object" && waitScreen?.denied === "owner-offline"
+              ? "Host is offline"
+              : typeof waitScreen === "object" && waitScreen?.denied === "room-full"
+                ? "Room is full"
+                : typeof waitScreen === "object" && waitScreen?.denied === "rejected"
+                  ? "Request denied"
+                  : typeof waitScreen === "object" && waitScreen?.denied === "banned"
+                    ? "Access denied"
+                    : "Joining room";
+
+    const subtitle =
+      waitScreen === "pending-approval"
+        ? "The room owner will approve your request."
+        : waitScreen === "owner-left"
+          ? "The host disconnected. Try again when they are back."
+          : typeof waitScreen === "object" && waitScreen?.denied === "owner-offline"
+            ? "Only invited members can enter while the host is away."
+            : typeof waitScreen === "object" && waitScreen?.denied === "room-full"
+              ? "This room allows at most 5 people online."
+              : typeof waitScreen === "object" && waitScreen?.denied === "rejected"
+                ? "The host declined your request to join."
+                : typeof waitScreen === "object" && waitScreen?.denied === "banned"
+                  ? "You cannot enter this room."
+                  : waitScreen === "connecting"
+                    ? "Establishing a secure connection."
+                    : "Please wait.";
+
+    return (
+      <div className="min-h-screen w-screen flex items-center justify-center bg-slate-50 p-4">
+        <div className="max-w-md w-full bg-white rounded-3xl border border-slate-200 shadow-xl p-8 text-center space-y-4">
+          <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center text-white mx-auto shadow-lg shadow-blue-200">
+            <lucideReact.Layout size={28} />
+          </div>
+          <h1 className="text-xl font-bold text-slate-900">{title}</h1>
+          <p className="text-sm text-slate-600">{subtitle}</p>
+          <p className="text-xs font-mono text-slate-400">Room: {roomId}</p>
+          <button
+            type="button"
+            onClick={handleWaitBack}
+            className="w-full py-3 rounded-xl bg-slate-900 text-white font-semibold text-sm hover:bg-black transition-colors"
+          >
+            Back to home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
     <div className="h-screen w-screen bg-slate-50 flex flex-col overflow-hidden relative">
       {/* Top Bar */}
       <header className="h-14 md:h-16 bg-white border-b border-slate-200 px-3 md:px-6 flex items-center justify-between z-20">
-        <div className="flex items-center gap-2 md:gap-4">
+        <div className="flex items-center gap-2 md:gap-4 min-w-0 flex-1">
           <div className="w-8 h-8 md:w-10 md:h-10 bg-blue-600 rounded-lg md:rounded-xl flex items-center justify-center text-white shrink-0">
             <lucideReact.Layout size={16} className="md:w-[18px] md:h-[18px]" />
           </div>
-          <div className="hidden sm:block">
+          <div className="hidden sm:block min-w-0">
             <h2 className="font-bold text-slate-900 leading-tight truncate max-w-[80px] sm:max-w-[120px] md:max-w-none text-sm md:text-base">Room: {roomId}</h2>
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
               <span className="text-[9px] text-slate-500 font-medium uppercase tracking-wider">Live</span>
             </div>
           </div>
+          {drawingPillText && (
+            <div className="flex items-center gap-2 ml-2 px-2 md:px-3 py-1 md:py-1.5 rounded-full bg-violet-50 border border-violet-100 text-violet-800 text-[10px] md:text-xs font-medium max-w-[min(280px,45vw)] truncate">
+              <lucideReact.Pencil className="w-3.5 h-3.5 shrink-0 animate-pulse" />
+              <span className="truncate">{drawingPillText}</span>
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center gap-1.5 md:gap-3">
+        <div className="flex items-center gap-1.5 md:gap-3 shrink-0">
+          {isRoomOwnerResolved && (
+            <button
+              type="button"
+              onClick={() => setShowParticipantsPanel(true)}
+              className="relative flex items-center gap-1 p-1.5 md:px-3 md:py-2 rounded-lg md:rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs md:text-sm font-semibold"
+              title="Manage participants"
+            >
+              <lucideReact.Users size={16} />
+              <span className="hidden sm:inline">People</span>
+              {pendingRequests.length > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                  {pendingRequests.length}
+                </span>
+              )}
+            </button>
+          )}
           <div className="flex -space-x-2 mr-1 md:mr-4">
             <div 
               title={userName}
@@ -768,7 +1016,7 @@ export default function Whiteboard({ session }: WhiteboardProps) {
                 userName.charAt(0)
               )}
             </div>
-            {participants.slice(0, 2).map((p, i) => (
+            {otherParticipants.slice(0, 2).map((p, i) => (
               <div 
                 key={p.id} 
                 title={p.name}
@@ -778,9 +1026,9 @@ export default function Whiteboard({ session }: WhiteboardProps) {
                 {p.name.charAt(0)}
               </div>
             ))}
-            {participants.length > 2 && (
+            {otherParticipants.length > 2 && (
               <div className="w-6 h-6 md:w-8 md:h-8 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-[8px] md:text-[10px] font-bold text-slate-500 shrink-0 shadow-sm">
-                +{participants.length - 2}
+                +{otherParticipants.length - 2}
               </div>
             )}
           </div>
@@ -1126,8 +1374,110 @@ export default function Whiteboard({ session }: WhiteboardProps) {
           <span className="hidden xs:inline">Connected as </span><span className="text-slate-900">{userName}</span>
         </div>
       </footer>
+
+      {showParticipantsPanel && isRoomOwnerResolved && (
+        <div className="fixed inset-0 z-[100] flex justify-end">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/40"
+            aria-label="Close panel"
+            onClick={() => setShowParticipantsPanel(false)}
+          />
+          <aside className="relative h-full w-full max-w-md bg-white shadow-2xl border-l border-slate-200 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 shrink-0">
+              <h3 className="font-bold text-lg text-slate-900">People</h3>
+              <button
+                type="button"
+                onClick={() => setShowParticipantsPanel(false)}
+                className="p-2 rounded-xl hover:bg-slate-100 text-slate-500"
+                aria-label="Close"
+              >
+                <lucideReact.X size={20} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-6">
+              {pendingRequests.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
+                    Waiting to join
+                  </p>
+                  <ul className="space-y-2">
+                    {pendingRequests.map((p) => (
+                      <li
+                        key={p.socketId}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 p-3"
+                      >
+                        <span className="font-medium text-slate-900 truncate">{p.name}</span>
+                        <div className="flex gap-2 shrink-0">
+                          <button
+                            type="button"
+                            disabled={roomRoster.length >= 5}
+                            title={roomRoster.length >= 5 ? "Room is full (max 5)" : "Approve"}
+                            onClick={() => handleDecideJoin(p.socketId, "approve")}
+                            className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDecideJoin(p.socketId, "reject")}
+                            className="px-3 py-1.5 rounded-lg bg-slate-200 text-slate-800 text-xs font-semibold hover:bg-slate-300"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">
+                  In this room
+                </p>
+                <ul className="space-y-2">
+                  {roomRoster.map((r) => {
+                    const isSelf = r.userId === session?.user?.id;
+                    const canModerate =
+                      !isSelf && r.role !== "owner" && session?.user?.id === boardOwnerId;
+                    return (
+                      <li
+                        key={r.socketId}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50/80 p-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-medium text-slate-900 truncate">{r.name}</p>
+                          <p className="text-[11px] text-slate-500 capitalize">{r.role}</p>
+                        </div>
+                        {canModerate && (
+                          <div className="flex gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleKick(r.socketId)}
+                              className="px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 text-xs font-semibold hover:bg-amber-100"
+                            >
+                              Kick
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleBanUser(r.userId, r.socketId)}
+                              className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700"
+                            >
+                              Ban
+                            </button>
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </div>
+          </aside>
+        </div>
+      )}
     </div>
-    )
   );
 }
 

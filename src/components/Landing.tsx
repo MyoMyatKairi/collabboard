@@ -120,14 +120,25 @@ export default function Landing({ session }: LandingProps) {
     if (!supabase) return toast.error("Supabase is not configured");
 
     const code = roomId.trim();
-    const { data, error } = await supabase
+    const { data: boardRow, error } = await supabase
       .from("boards")
-      .select("room_code")
+      .select("id, room_code")
       .eq("room_code", code)
       .maybeSingle();
 
     if (error) return toast.error(error.message || "Failed to find room");
-    if (!data) return toast.error("Room not found");
+    if (!boardRow) return toast.error("Room not found");
+
+    const { data: participantRow } = await supabase
+      .from("participants")
+      .select("role")
+      .eq("board_id", boardRow.id)
+      .eq("user_id", session.user.id)
+      .maybeSingle();
+
+    if (participantRow?.role === "banned") {
+      return toast.error("You have been banned from this room");
+    }
 
     navigate(`/room/${code}`);
   };

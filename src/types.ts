@@ -15,10 +15,33 @@ export interface Element {
   rotation?: number;
 }
 
+export type ParticipantRole = "owner" | "editor" | "viewer" | "banned";
+
 export interface Participant {
   id: string;
   name: string;
   color?: string;
+  userId?: string;
+  role?: ParticipantRole;
+}
+
+export interface PendingRequest {
+  socketId: string;
+  userId: string;
+  name: string;
+}
+
+export interface DrawingUser {
+  userId: string;
+  name: string;
+}
+
+export interface RoomRosterEntry {
+  socketId: string;
+  userId: string;
+  name: string;
+  role: Extract<ParticipantRole, "owner" | "editor" | "viewer">;
+  drawing: boolean;
 }
 
 export interface CursorPosition {
