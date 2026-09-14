@@ -1,103 +1,261 @@
-# CollabBoard — Collaborative whiteboard
+Here’s a **GitHub-ready, startup-grade README** with:
 
-A real-time collaborative whiteboard: shared cursors, drawing tools, room codes, and Supabase-backed auth and persistence. Technical handover lives in **[`docs/`](docs/README.md)**; manual QA cases are in **[`testing/`](testing/README.md)**.
+* ✅ Badges (status, tech stack style)
+* 🎬 GIF hero section placeholder
+* 📸 Screenshot sections
+* ✨ Clean marketing structure
+* 🧠 Still developer-friendly
 
-## Features
+You can directly copy-paste this into your repo.
 
-- **Realtime collaboration** — Socket.IO syncs strokes, edits, clears, and cursors while users are online (room cap: 5 concurrent sockets).
-- **Drawing tools** — Pen, rectangle, circle, arrow, line, text, sticky notes, eraser; colors and stroke widths; selection and transform.
-- **Supabase auth** — Email sign-up and sign-in.
-- **Rooms** — Boards with short `room_code`; create from home or join by code; recent rooms with presence hints.
-- **Moderation** — Owner can approve pending guests, kick, and ban (aligned with server and DB role).
-- **Persistence** — Board metadata and elements stored in Postgres (`board_elements`, `boards`, `participants`, `board_presence`).
-- **Export** — PNG and PDF export from the canvas.
-- **Responsive UI** — Desktop and mobile toolbar layouts.
+---
 
-## Tech stack
+# ✨ CollabBoard
 
-React 19, Vite 6, TypeScript, Tailwind CSS 4, Konva, Express + Socket.IO, Supabase.
+<p align="center">
+  <img src="https://dummyimage.com/1200x500/0f172a/ffffff&text=CollabBoard+Real-time+Whiteboard" alt="CollabBoard Hero GIF" />
+</p>
 
-## Prerequisites
+<p align="center">
+  <b>A real-time collaborative whiteboard for teams that think visually.</b><br/>
+  Sketch, design, and brainstorm together — instantly, anywhere.
+</p>
 
-- Node.js **20+** (see `package.json` `engines`).
-- A [Supabase](https://supabase.com/) project.
+<p align="center">
+  <img src="https://img.shields.io/badge/React-19-blue?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Vite-6-purple?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/TypeScript-5.5-blue?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Supabase-Backend-green?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Socket.IO-Realtime-black?style=for-the-badge" />
+</p>
 
-## Quick start
+---
 
-### 1. Environment
+## 🎬 Live Experience
 
-Copy [`.env.example`](.env.example) to `.env` and set:
+<p align="center">
+  <img src="https://dummyimage.com/1000x600/111827/ffffff&text=Live+Collaboration+GIF+Here" alt="Collaboration Demo GIF" />
+</p>
+
+> 🔥 Replace this with a real screen recording GIF of:
+>
+> * drawing sync
+> * cursor movement
+> * multi-user collaboration
+
+---
+
+## 🚀 Why CollabBoard?
+
+CollabBoard is built for teams that move fast and think visually.
+
+Unlike traditional whiteboards, it’s:
+
+* ⚡ **Instant** — join and start drawing immediately
+* 🌍 **Real-time by default** — every action syncs live
+* 🧠 **Built for thinking** — not just drawing
+* 🔐 **Secure** — Supabase authentication & roles
+* 💾 **Persistent** — everything saved automatically
+
+---
+
+## ✨ Features
+
+### 🟢 Real-Time Collaboration
+
+* Live cursor tracking
+* Stroke-by-stroke syncing
+* Room-based sessions (up to 5 users)
+* Socket.IO-powered low latency updates
+
+---
+
+### 🎨 Drawing Toolkit
+
+* Pen, line, arrow, rectangle, circle
+* Text & sticky notes
+* Eraser tool
+* Color + stroke customization
+* Select & transform objects
+
+---
+
+### 🏠 Smart Rooms
+
+* Join via room code
+* Create private/shared boards
+* View active participants
+* Lightweight presence system
+
+---
+
+### 🔐 Authentication & Moderation
+
+* Supabase email auth
+* Role-based access (owner / guest)
+* Approve, kick, and ban controls
+
+---
+
+### 💾 Persistent Storage
+
+Everything saved in PostgreSQL:
+
+* boards
+* board_elements
+* participants
+* board_presence
+
+---
+
+### 📤 Export
+
+* Export as PNG
+* Export as PDF
+
+---
+
+## 📸 Screenshots
+
+### 🖥️ Desktop View
+
+<p align="center">
+  <img src="https://dummyimage.com/1000x600/1f2937/ffffff&text=Desktop+Whiteboard+UI" />
+</p>
+
+### 📱 Mobile View
+
+<p align="center">
+  <img src="https://dummyimage.com/500x900/111827/ffffff&text=Mobile+Toolbar+View" />
+</p>
+
+### 🎨 Drawing Tools
+
+<p align="center">
+  <img src="https://dummyimage.com/1000x600/0b1220/ffffff&text=Tools+Palette+%2B+Canvas+Elements" />
+</p>
+
+---
+
+## 🧱 Tech Stack
+
+* React 19
+* Vite 6
+* TypeScript
+* Tailwind CSS 4
+* Konva (Canvas engine)
+* Express.js
+* Socket.IO
+* Supabase (Auth + DB)
+
+---
+
+## ⚙️ Getting Started
+
+### 1. Install dependencies
+
+```bash
+npm install
+```
+
+---
+
+### 2. Setup environment
 
 ```env
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your_anon_key
 ```
 
-Optional variables are documented in [`.env.example`](.env.example) and [`docs/04-environment-variables.md`](docs/04-environment-variables.md).
+---
 
-### 2. Database
+### 3. Database setup
 
-In the Supabase SQL editor, run:
+Run in Supabase SQL editor:
 
-- [`supabase/schema.sql`](supabase/schema.sql)
+* `supabase/schema.sql`
+* (optional) `supabase/seed.sql`
 
-Optional:
+---
 
-- [`supabase/seed.sql`](supabase/seed.sql)
-
-### 3. Supabase auth
-
-Under **Authentication → Providers → Email**, you may disable **Confirm email** for faster local testing.
-
-### 4. Install and run
+### 4. Run locally
 
 ```bash
-npm install
 npm run dev
 ```
 
-Open **http://localhost:3000**. The dev server (`server.ts`) runs Express with Vite in middleware mode and Socket.IO on the same port.
+Open:
 
-### Production-style run
+👉 [http://localhost:3000](http://localhost:3000)
 
-```bash
-npm run build
-NODE_ENV=production npm run start
+---
+
+## 🏗️ Architecture
+
+```
+Frontend (React + Vite)
+        ↓
+Socket.IO (Real-time layer)
+        ↓
+Express Server (Node.js)
+        ↓
+Supabase (Auth + PostgreSQL)
 ```
 
-Express serves the built SPA from `dist/` and keeps Socket.IO on port 3000.
+---
 
-## Documentation
+## 📁 Project Structure
 
-| Resource | Description |
-|----------|-------------|
-| [`docs/README.md`](docs/README.md) | Handover index (architecture, env, DB, realtime protocol, deployment) |
-| [`testing/README.md`](testing/README.md) | Manual test matrix and case files |
+```
+server.ts            → Express + Socket.IO server
+src/App.tsx         → App routing & auth
+src/components/     → UI (Whiteboard, Auth, Landing)
+src/lib/supabase.ts → Supabase client
+src/types.ts        → Shared types
+supabase/           → DB schema
+docs/               → Technical docs
+testing/            → QA test cases
+```
 
-## Project layout
+---
 
-| Path | Role |
-|------|------|
-| `server.ts` | HTTP + Vite (dev) or static `dist` (prod) + Socket.IO |
-| `src/App.tsx` | Router and auth gate |
-| `src/components/` | Auth, Landing, Whiteboard |
-| `src/lib/supabase.ts` | Supabase client |
-| `src/types.ts` | Shared TypeScript types |
-| `supabase/` | SQL schema and seed |
+## 📖 Documentation
 
-## Scripts
+* 📘 [`docs/README.md`](docs/README.md)
+* 🧪 [`testing/README.md`](testing/README.md)
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Development (tsx + Vite middleware + Socket.IO) |
-| `npm run build` | Production frontend build |
-| `npm run start` | Node server (set `NODE_ENV=production` for static assets) |
-| `npm run preview` | Vite preview only (not the main app server) |
-| `npm run clean` | Remove `dist/` |
-| `npm run lint` | `tsc --noEmit` |
-| `npm test` | Vitest: manual case docs + Socket.IO integration tests (`tests/socket.integration.test.ts`) |
-| `npm run test:watch` | Vitest in watch mode |
+---
 
-## License
+## 🌍 Use Cases
 
-MIT — see [`LICENSE`](LICENSE).
+* Remote team brainstorming
+* Product design sessions
+* Teaching & classrooms
+* Technical architecture planning
+* Rapid idea prototyping
+
+---
+
+## 📄 License
+
+MIT — free to use, learn, and build upon.
+
+---
+
+## 💡 Vision
+
+> “Ideas should move at the speed of thought.”
+
+CollabBoard removes friction from collaboration —
+so teams can focus on thinking, not tools.
+
+---
+
+## 🔥 Optional Upgrade (next step)
+
+If you want, I can also:
+
+* replace all dummy images with **real screenshots from your app**
+* generate a **real animated GIF from your UI flow**
+* design a **GitHub banner + logo for CollabBoard**
+* or convert this into a **landing page (Next.js marketing site)**
